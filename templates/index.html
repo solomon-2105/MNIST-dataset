@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>MNIST Digit Recognizer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 30px;
+        }
+        canvas {
+            border: 2px solid #000;
+            background-color: #fff;
+            cursor: crosshair;
+        }
+        button {
+            margin-top: 15px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Draw a Digit (0-9) Below</h1>
+    <canvas id="canvas" width="280" height="280"></canvas>
+    <br />
+    <button onclick="clearCanvas()">Clear</button>
+    <button onclick="predict()">Predict</button>
+
+    <div id="result"></div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let drawing = false;
+
+        // Set up canvas
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        canvas.addEventListener('mousedown', () => { drawing = true; });
+        canvas.addEventListener('mouseup', () => { drawing = false; ctx.beginPath(); });
+        canvas.addEventListener('mouseout', () => { drawing = false; ctx.beginPath(); });
+
+        canvas.addEventListener('mousemove', draw);
+
+        function draw(event) {
+            if (!drawing) return;
+            ctx.lineWidth = 20;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = 'black';
+
+            ctx.lineTo(event.offsetX, event.offsetY);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(event.offsetX, event.offsetY);
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('result').innerText = '';
+        }
+
+        // Preprocess the canvas image to 28x28 grayscale normalized array
+        function preprocessCanvas() {
+            // Create a temporary canvas to resize to 28x28
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 28;
+            tempCanvas.height = 28;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // Draw current canvas into temp canvas scaled down
+            tempCtx.drawImage(canvas, 0, 0, 28, 28);
+
+            // Get image data from temp canvas
+            const imgData = tempCtx.getImageData(0, 0, 28, 28);
+            const data = imgData.data;
+            let grayscale = [];
+
+            // Convert to normalized grayscale (inverted: black digit on white background)
+            // MNIST digits have white (high) pixels on black background,
+            // but canvas background is white, so we invert colors here.
+            for (let i = 0; i < data.length; i += 4) {
+                // data[i] = red channel (R=G=B for grayscale)
+                // Normalize pixel: 0 (white) to 1 (black) inverted
+                const avg = data[i]; // since it's grayscale, R=G=B
+                const normalized = (255 - avg) / 255;
+                grayscale.push(normalized);
+            }
+
+            return grayscale;
+        }
+
+        // Predict function: sends data to backend
+        function predict() {
+            const image = preprocessCanvas();
+
+            // The model expects a 28x28 array, so reshape the flat array
+            let image2D = [];
+            for (let i = 0; i < 28; i++) {
+                image2D.push(image.slice(i * 28, i * 28 + 28));
+            }
+
+            fetch('/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: image2D })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('result').innerText = 'Predicted digit: ' + data.digit;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result').innerText = 'Prediction failed.';
+            });
+        }
+    </script>
+
+</body>
+</html>
